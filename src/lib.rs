@@ -48,41 +48,28 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 }
 
 fn search<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
-  let mut matches = vec![];
-
-  for (i, line) in content.lines().enumerate() {
-    if line.contains(query) {
-      matches.push((i+1, line));
-    }
-  }
-
-  matches
+  content.lines().enumerate()
+    .filter(|(_, line)| line.contains(query))
+    .map(|(i, line)| (i+1, line))
+    .collect()
 }
 
 fn search_case_insensitive<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
-  let mut matches = vec![];
   let query = query.to_lowercase();
 
-  for (i, line) in content.lines().enumerate() {
-    if line.to_lowercase().contains(&query) {
-      matches.push((i+1, line));
-    }
-  }
-
-  matches
+  content.lines().enumerate()
+    .filter(|(_, line)| line.to_lowercase().contains(&query))
+    .map(|(i, line)| (i+1, line))
+    .collect()
 }
 
 fn search_regex<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
-  let mut matches = vec![];
   let regex = Regex::new(query).unwrap();
 
-  for (i, line) in content.lines().enumerate() {
-    if regex.is_match(line) {
-      matches.push((i+1, line));
-    }
-  }
-
-  matches
+  content.lines().enumerate()
+    .filter(|(_, line)| regex.is_match(line))
+    .map(|(i, line)| (i+1, line))
+    .collect()
 }
 
 #[cfg(test)]
