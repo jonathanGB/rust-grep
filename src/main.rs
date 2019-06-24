@@ -1,17 +1,13 @@
-use std::env;
 use std::process;
 
 use minigrep::Config;
+use structopt::StructOpt;
 
 fn main() {
-    let cl_args: Vec<String> = env::args().collect();
-    let config = Config::new(&cl_args).unwrap_or_else(|err| {
-        eprintln!("Problem parsing arguments:\n{}", err);
-        process::exit(1);
-    });
+    let config = Config::new(|| Config::from_args());
 
     if let Err(e) = minigrep::run(config) {
-        eprintln!("Problem running the application: {}", e);
+        eprintln!("Problem running the application\n{}", e);
         process::exit(1);
     }
 }

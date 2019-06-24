@@ -6,10 +6,10 @@
 ```
 $ git clone https://github.com/jonathanGB/rust-grep.git
 $ cd rust-grep
-$ [CASE_INSENSITIVE=] cargo run <query> <filename> [--regex]
+$ cargo run <query> <filename> [--case_insensitive]
 ```
 
-where `query` is the keyword you are grepping inside a file which path is `filename`. An optional parameter `--regex` tells the program that `query` should be interpreted as a regular expression, not simply as a substring. In case the regex flag is not used, it is still possible to denote a case insensitive search by setting the environment variable `CASE_INSENSITIVE` (the value doesn't matter). Minigrep is also currently limited in that we can only grep one file.
+where `query` is the keyword you are grepping inside a file which path is `filename`. It is possible to denote a case insensitive search by using the `--case_insensitive` flag. Minigrep is also currently limited in that we can only grep one file.
 
 ### Examples
 
@@ -17,10 +17,10 @@ where `query` is the keyword you are grepping inside a file which path is `filen
 $ cargo run are poem.txt
 Line 1: I'm nobody! Who are you?
 
-$ CASE_INSENSITIVE= cargo run are poem.txt
+$ cargo run are poem.txt --case_insensitive
 Line 1: I'm nobody! Who are you?
 Line 2: Are you nobody, too?
 
-$ cargo run '\b[a-z]{3}re' poem.txt --regex
+$ cargo run '\b[a-z]{3}re' poem.txt
 Line 3: Then there's a pair of us - don't tell!
 ```

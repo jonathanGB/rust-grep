@@ -1,88 +1,60 @@
 extern crate regex;
+extern crate structopt;
 
-use std::env;
 use std::error::Error;
 use std::fs;
 
 use regex::Regex;
+use regex::RegexBuilder;
+use structopt::StructOpt;
 
-#[derive(Debug)]
+fn parse_regex(src: &str) -> RegexBuilder {
+    RegexBuilder::new(src)
+}
+
+#[derive(StructOpt)]
+#[structopt(name = "minigrep")]
 pub struct Config {
-    query: String,
+    /// Query to search for.
+    #[structopt(parse(from_str = "parse_regex"))]
+    query: RegexBuilder,
+
+    /// In what file to search for.
     filename: String,
-    case_sensitive: bool,
-    regex_search: bool,
+
+    /// Specify whether or not the query is case sensitive.
+    /// It is case sensitive by default.
+    #[structopt(long)]
+    case_insensitive: bool,
 }
 
 impl Config {
-    pub fn new(args: &Vec<String>) -> Result<Self, &'static str> {
-        if args.len() < 3 {
-            return Err("Not enough arguments: should have a query and a filename parameters (2)");
-        }
-
-        let query = args[1].clone();
-        let filename = args[2].clone();
-
-        let case_sensitive = env::var("CASE_INSENSITIVE").is_err();
-        let regex_search = args[3..].contains(&String::from("--regex"));
-
-        if regex_search && Regex::new(&query).is_err() {
-            return Err("Query is an invalid regular expression");
-        }
-
-        Ok(Config {
-            query,
-            filename,
-            case_sensitive,
-            regex_search,
-        })
+    pub fn new<F>(get_args: F) -> Self
+    where
+        F: FnOnce() -> Config,
+    {
+        let mut config = get_args();
+        config.query.case_insensitive(config.case_insensitive);
+        config
     }
 }
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let file_content = fs::read_to_string(&config.filename)?;
-    let search_fn = if config.regex_search {
-        search_regex
-    } else if config.case_sensitive {
-        search
-    } else {
-        search_case_insensitive
-    };
+    let regex_query = config.query.build()?;
 
-    for (i, line) in search_fn(&config.query, &file_content) {
+    for (i, line) in search(&regex_query, &file_content) {
         println!("Line {}: {}", i, line);
     }
 
     Ok(())
 }
 
-fn search<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
+fn search<'a>(query: &Regex, content: &'a str) -> Vec<(usize, &'a str)> {
     content
         .lines()
         .enumerate()
-        .filter(|(_, line)| line.contains(query))
-        .map(|(i, line)| (i + 1, line))
-        .collect()
-}
-
-fn search_case_insensitive<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
-    let query = query.to_lowercase();
-
-    content
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| line.to_lowercase().contains(&query))
-        .map(|(i, line)| (i + 1, line))
-        .collect()
-}
-
-fn search_regex<'a>(query: &str, content: &'a str) -> Vec<(usize, &'a str)> {
-    let regex = Regex::new(query).unwrap();
-
-    content
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| regex.is_match(line))
+        .filter(|(_, line)| query.is_match(line))
         .map(|(i, line)| (i + 1, line))
         .collect()
 }
@@ -93,76 +65,60 @@ mod tests {
 
     #[test]
     fn new_config() {
-        let program = String::from("<program>");
-        let query = String::from("<query>");
-        let filename = String::from("<filename>");
+        let query = RegexBuilder::new(r"[a-z]");
+        let filename = String::from("poem.txt");
+        let case_insensitive = false;
 
-        let args = vec![program.clone(), query.clone(), filename.clone()];
-        let config = Config::new(&args).unwrap();
-        assert_eq!(query, config.query);
-        assert_eq!(filename, config.filename);
+        let config = Config::new(|| Config{query, filename, case_insensitive});
+        assert!(run(config).is_ok());     
     }
 
     #[test]
-    #[should_panic(
-        expected = "Not enough arguments: should have a query and a filename parameters (2)"
-    )]
-    fn new_bad_config() {
-        let program = String::from("<program>");
-        let query = String::from("<query>");
-
-        let args = vec![program, query];
-        Config::new(&args).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "Query is an invalid regular expression")]
     fn new_config_invalid_regex() {
-        let program = String::from("<program>");
-        let query = String::from(r"[a-z\]");
-        let filename = String::from("<filename>");
-        let regex_flag = String::from("--regex");
+        let query = RegexBuilder::new(r"[a-z\]");
+        let filename = String::from("poem.txt");
+        let case_insensitive = false;
 
-        let args = vec![program, query, filename, regex_flag];
-        Config::new(&args).unwrap();
+        let config = Config::new(|| Config{query, filename, case_insensitive});
+        assert!(run(config).is_err());
     }
 
     #[test]
     fn one_result() {
-        let query = "duct";
+        let query = Regex::new("duct").unwrap();
         let content = "Rust:
 safe, fast, productive.
 Pick three.";
 
-        assert_eq!(vec![(2, "safe, fast, productive.")], search(query, content));
+        assert_eq!(vec![(2, "safe, fast, productive.")], search(&query, content));
     }
 
     #[test]
     fn no_result() {
-        let query = "404";
+        let query = Regex::new("404").unwrap();
         let content = "Rust:
 safe, fast, productive.
 Pick three.";
 
-        assert_eq!(Vec::<(usize, &str)>::new(), search(query, content));
+        assert_eq!(Vec::<(usize, &str)>::new(), search(&query, content));
     }
 
     #[test]
     fn two_results() {
-        let query = "st";
+        let query = Regex::new("st").unwrap();
         let content = "Rust:
 safe, fast, productive.
 Pick three.";
 
         assert_eq!(
             vec![(1, "Rust:"), (2, "safe, fast, productive.")],
-            search(query, content)
+            search(&query, content)
         );
     }
 
     #[test]
     fn case_insensitive() {
-        let query = "RuST";
+        let query = RegexBuilder::new("RuST").case_insensitive(true).build().unwrap();
         let content = "Rust:
 safe, fast, productive.
 Pick three.
@@ -170,13 +126,13 @@ Trust me.";
 
         assert_eq!(
             vec![(1, "Rust:"), (4, "Trust me.")],
-            search_case_insensitive(query, content)
+            search(&query, content)
         );
     }
 
     #[test]
     fn case_regex() {
-        let query = r"\b[a-zA-Z]{4}\b";
+        let query = Regex::new(r"\b[a-zA-Z]{4}\b").unwrap();
         let content = "Rust:
 safe, fast, productive.
 Pick three.
@@ -188,7 +144,7 @@ Trust me.";
                 (2, "safe, fast, productive."),
                 (3, "Pick three.")
             ],
-            search_regex(query, content)
+            search(&query, content)
         );
     }
 }
