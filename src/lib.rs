@@ -1,5 +1,6 @@
 extern crate regex;
 extern crate structopt;
+extern crate glob;
 
 use std::error::Error;
 use std::fs;
@@ -7,9 +8,14 @@ use std::fs;
 use regex::Regex;
 use regex::RegexBuilder;
 use structopt::StructOpt;
+use glob::glob;
 
 fn parse_regex(src: &str) -> RegexBuilder {
     RegexBuilder::new(src)
+}
+
+fn parse_glob(src: &str) -> Result<glob::Paths, glob::PatternError> {
+    glob(src)
 }
 
 #[derive(StructOpt)]
@@ -20,7 +26,8 @@ pub struct Config {
     query: RegexBuilder,
 
     /// In what file to search for.
-    filename: String,
+    #[structopt(parse(from_str = "parse_glob"))]
+    filename: Result<glob::Paths, glob::PatternError>,
 
     /// Specify whether or not the query is case sensitive.
     /// It is case sensitive by default.
@@ -40,11 +47,20 @@ impl Config {
 }
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let file_content = fs::read_to_string(&config.filename)?;
+    let paths = config.filename?;
     let regex_query = config.query.build()?;
 
-    for (i, line) in search(&regex_query, &file_content) {
-        println!("Line {}: {}", i, line);
+    for filename in paths.filter_map(Result::ok) {
+        let file_content = fs::read_to_string(&filename)?;
+        let search_result = search(&regex_query, &file_content);
+        if search_result.is_empty() {
+            continue;
+        }
+
+        println!("\n{}", filename.display());
+        for (i, line) in search_result {
+            println!("Line {}: {}", i, line);
+        }
     }
 
     Ok(())
